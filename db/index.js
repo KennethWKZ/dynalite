@@ -38,6 +38,7 @@ exports.mapPath = mapPath
 exports.queryTable = queryTable
 exports.updateIndexes = updateIndexes
 exports.getIndexActions = getIndexActions
+exports.deleteItem = deleteItem
 
 function create(options) {
   options = options || {}
@@ -139,15 +140,30 @@ function create(options) {
               if (err) return
               if (!table.TimeToLiveDescription || table.TimeToLiveDescription.TimeToLiveStatus !== 'ENABLED') return
 
+              var keyAttrNames = table.KeySchema.map(function(i) {
+                return i.AttributeName
+              })
+              var source = {
+                getItemDb: getItemDb,
+                getIndexDb: getIndexDb,
+              }
               var itemDb = getItemDb(table.TableName)
               var kvStream = lazyStream(itemDb.createReadStream({}), logError())
               kvStream = kvStream.filter(function(item){
                 var ttl = item.value[table.TimeToLiveDescription.AttributeName]
                 return ttl && typeof ttl.N === 'string' && currentUnixSeconds > Number(ttl.N)
               })
-              kvStream.join(function(items){
-                items.forEach(function(item) {
-                  itemDb.del(item.key)
+              kvStream.join(function(kvs){
+                kvs.forEach(function(kv) {
+                  var itemKey = keyAttrNames.reduce(function(key, attrName) {
+                    key[attrName] = kv.value[attrName]
+                    return key
+                  }, {})
+                  var data = { TableName: name, Key: itemKey}
+                  var cb = function(err) {
+                    // Noop ?
+                  }
+                  deleteItem(source, data, table, itemDb, kv.key, cb)
                 })
               })
             })
@@ -216,6 +232,34 @@ function validateItem(dataItem, table) {
         'Type mismatch for Index Key ' + attr + ' Expected: ' + type +
         ' Actual: ' + Object.keys(dataItem[attr])[0] + ' IndexName: ' + index.IndexName)
     }
+  })
+}
+
+function deleteItem(store, data, table, itemDb, key, cb) {
+  itemDb.lock(key, function(release) {
+    cb = release(cb)
+
+    itemDb.get(key, function(err, existingItem) {
+      if (err && err.name !== 'NotFoundError') return cb(err)
+
+      if ((err = checkConditional(data, existingItem)) != null) return cb(err)
+
+      var returnObj = {}
+
+      if (existingItem && data.ReturnValues === 'ALL_OLD')
+        returnObj.Attributes = existingItem
+
+      returnObj.ConsumedCapacity = addConsumedCapacity(data, false, existingItem)
+
+      updateIndexes(store, table, existingItem, null, function(err) {
+        if (err) return cb(err)
+
+        itemDb.del(key, function(err) {
+          if (err) return cb(err)
+          cb(null, returnObj)
+        })
+      })
+    })
   })
 }
 
