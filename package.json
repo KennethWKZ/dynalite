@@ -1,5 +1,5 @@
 {
-  "name": "dynalite2",
+  "name": "dynalite-kwz",
   "version": "3.2.1",
   "description": "An implementation of Amazon's DynamoDB built on LevelDB",
   "main": "index.js",
