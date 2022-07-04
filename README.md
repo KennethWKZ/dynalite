@@ -35,6 +35,8 @@ Options:
 --deleteTableMs <ms>  Amount of time tables stay in DELETING state (default: 500)
 --updateTableMs <ms>  Amount of time tables stay in UPDATING state (default: 500)
 --maxItemSizeKb <kb>  Maximum item size (default: 400)
+--ttlCheckEvery <kb>  Time gap between TTL expiration background job (default: 60)
+                      0 or negative disable TTL expiration
 
 Report bugs at github.com/mhart/dynalite/issues
 ```
